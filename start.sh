@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-cd /Users/cwc/go/src/libstatask
 module=libstatask
+num=`ls -ltr|grep log|wc -l`
+if [ $num -eq 1 ]; then
+    echo "success to find log dir"
+else
+    mkdir log
+fi
 count=`ps ax|grep $module|grep -v grep|wc -l`
 pid=`ps ax|grep $module|grep -v grep|awk '{print $1}'`
 if [  $count -gt 0 ]; then
