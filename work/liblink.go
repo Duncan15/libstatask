@@ -6,6 +6,7 @@ import (
 	"golang.org/x/net/html"
 	"libstatask/common/dbs"
 	"libstatask/common/nets"
+	"libstatask/common/retries"
 	"libstatask/common/sys"
 	"net/http"
 	"net/url"
@@ -78,10 +79,22 @@ func CollectLibDomainLink() {
 	defer session.Close()
 	for _, unit := range libUnitSlice {
 		unit.UpdateTime = time.Now().Unix()
-		if has, err := session.Where("deleted=?", dbs.Undeleted).Exist(&dbs.LibUnit{Name: unit.Name}); err == nil && has {
-			session.Where("name = ?", unit.Name).Update(unit)
+		var has bool
+
+		if err := retries.Retry(5, func() error {
+			var innerErr error
+			has, innerErr = session.Where("deleted=?", dbs.Undeleted).Exist(&dbs.LibUnit{Name: unit.Name})
+			return innerErr
+		}); err == nil && has {
+			retries.Retry(5, func() error {
+				_, innerErr := session.Where("name = ?", unit.Name).Update(unit)
+				return innerErr
+			})
 		} else {
-			session.InsertOne(unit)
+			retries.Retry(5, func() error {
+				_, innerErr := session.InsertOne(unit)
+				return innerErr
+			})
 		}
 	}
 }

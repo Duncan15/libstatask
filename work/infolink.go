@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"libstatask/common/dbs"
 	"libstatask/common/nets"
+	"libstatask/common/retries"
 	"libstatask/common/sys"
 	"net/http"
 	"strconv"
@@ -30,7 +31,9 @@ func CollectInfoFromCurrentSeats(collectRule func(map[string]interface{})) func(
 		defer session.Close()
 		var err error
 		libUnitSlice := []*dbs.LibUnit{}
-		if err = session.Asc("id").Where("deleted=?", dbs.Undeleted).Find(&libUnitSlice); err != nil {
+		if err = retries.Retry(5, func() error {
+			return session.Asc("id").Where("deleted=?", dbs.Undeleted).Find(&libUnitSlice)
+		}); err != nil {
 			glog.Errorf("error happen when read from db, error: %v", err)
 			return
 		}
@@ -93,10 +96,18 @@ func CollectSeatsInfoRule(input map[string]interface{}) {
 		RoomID:   roomID,
 	}
 
-	if has, err := session.Cols("seat_name", "location", "room_id").Exist(seat); err != nil {
-		panic(err)
+	var has bool
+	if err := retries.Retry(5, func() error {
+		var innerErr error
+		has, innerErr = session.Cols("seat_name", "location", "room_id").Exist(seat)
+		return innerErr
+	}); err != nil {
+		panic(fmt.Errorf("error when check whether seat is existed by seatName, location and roomID from db, cause %v", err))
 	} else if !has {
-		session.InsertOne(seat)
+		retries.Retry(5, func() error {
+			_, innerErr := session.InsertOne(seat)
+			return innerErr
+		})
 	}
 }
 
@@ -134,30 +145,49 @@ func CollectSeatsActionRule(input map[string]interface{}) {
 		}
 		seatName := input["name"].(string)
 
-		if has, err := session.Where("user_id=?", userID).Exist(new(dbs.User)); err != nil {
-			panic(err)
+		var has bool
+		if err := retries.Retry(5, func() error {
+			var innerErr error
+			has, innerErr = session.Where("user_id=?", userID).Exist(new(dbs.User))
+			return innerErr
+		}); err != nil {
+			panic(fmt.Errorf("error when find user information by user_id from db, cause %v", err))
 		} else if !has {
-			session.InsertOne(&dbs.User{
-				UserID:   userID,
-				UserName: userName,
+			retries.Retry(5, func() error {
+				_, innerErr := session.InsertOne(&dbs.User{
+					UserID:   userID,
+					UserName: userName,
+				})
+				return innerErr
 			})
+
 		}
 
 		action := new(dbs.UserSeat)
 		action.UserID = userID
 		action.StartTime = startTime
 		action.SeatName = seatName
-		if has, err := session.Get(action); err != nil {
-			panic(err)
+		if err := retries.Retry(5, func() error {
+			var innerErr error
+			has, innerErr = session.Get(action)
+			return innerErr
+		}); err != nil {
+			panic(fmt.Errorf("error when check action information by userID,startTime and seatName from db, cause %v", err))
 		} else if has { //if this record has existed
 			action.UpdateTime = time.Now()
-			if _, err := session.ID(action.ID).Update(action); err != nil {
-				panic(err)
+			if err := retries.Retry(5, func() error {
+				_, innerErr := session.ID(action.ID).Update(action)
+				return innerErr
+			}); err != nil {
+				panic(fmt.Errorf("error when update action information into db, cause %v", err))
 			}
 		} else { //if no exist
 			action.UpdateTime = time.Now()
-			if _, err := session.InsertOne(action); err != nil {
-				panic(err)
+			if err := retries.Retry(5, func() error {
+				_, innerErr := session.InsertOne(action)
+				return innerErr
+			}); err != nil {
+				panic(fmt.Errorf("error when insert action into db, cause %v", err))
 			}
 		}
 	}

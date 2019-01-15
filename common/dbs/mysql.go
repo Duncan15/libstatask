@@ -62,6 +62,7 @@ KEEP_ALIVE:
 				continue KEEP_ALIVE
 			}
 		}
+		//if retry 5 times and can't ping successfully, try to initialize another MySQL engine
 		NewMySQL(tcpAddr, userName, password, dbName)
 	}
 	MySQL.Close()

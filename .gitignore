@@ -6,3 +6,6 @@ nohup.out
 #comiple
 libstatask
 
+#cfg file
+config_online.ini
+

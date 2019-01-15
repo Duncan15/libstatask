@@ -6,6 +6,7 @@ import (
 	"github.com/golang/glog"
 	"libstatask/common/dates"
 	"libstatask/common/dbs"
+	"libstatask/common/retries"
 	"libstatask/common/sorts"
 	"net/http"
 	"sort"
@@ -113,17 +114,27 @@ func FindFrequentNeighboursByName(ctx *gin.Context) {
 	daysStr := ctx.DefaultQuery("days", "1")
 	days, _ := strconv.ParseInt(daysStr, 10, 64)
 	usr := new(dbs.User)
-	if has, err := session.Where("user_name=?", name).Get(usr); err != nil {
-		panic(err)
+
+	var has bool
+	if err := retries.Retry(5, func() error {
+		var innerErr error
+		has, innerErr = session.Where("user_name=?", name).Get(usr)
+		return innerErr
+	}); err != nil {
+		panic(fmt.Errorf("can't get user by user_name, cause %v", err))
 	} else if !has {
 		ctx.JSON(http.StatusOK, gin.H{
 			"detail": "no user find",
 		})
 		return
 	}
+
 	userSeats := make([]dbs.UserSeat, 0)
-	if err := session.Where("user_id=?", usr.UserID).And("start_time>?", dates.GetStartTimeOfCurrentDay(time.Now()).Add(time.Duration((-days+1)*24)*time.Hour).String()).Asc("id").Find(&userSeats); err != nil {
-		panic(err)
+
+	if err := retries.Retry(5, func() error {
+		return session.Where("user_id=?", usr.UserID).And("start_time>?", dates.GetStartTimeOfCurrentDay(time.Now()).Add(time.Duration((-days+1)*24)*time.Hour).String()).Asc("id").Find(&userSeats)
+	}); err != nil {
+		panic(fmt.Errorf("can't get actions by user_id and start_time, cause %v", err))
 	}
 
 	collector := make(chan []dbs.UserSeat, len(userSeats))
@@ -157,7 +168,6 @@ func FindFrequentNeighboursByName(ctx *gin.Context) {
 	ids := []interface{}{}
 	for i := range s {
 		if s[i].Key < 2 {
-			fmt.Println("hh")
 			break
 		}
 		ids = append(ids, s[i].Value)
