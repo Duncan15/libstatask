@@ -29,7 +29,7 @@ func main() {
 
 	libLinkTask := tasks.NewTimingTask("collectLibDomainLink", work.CollectLibDomainLink, time.Now().Unix(), 24*time.Hour)
 	seatsInfoTask := tasks.NewTimingTask("collectSeatsInfo", work.CollectInfoFromCurrentSeats(work.CollectSeatsInfoRule), time.Now().Unix(), 24*time.Hour)
-	seatsActionTask := tasks.NewTimingTask("collectSeatsAction", work.CollectInfoFromCurrentSeats(work.CollectSeatsActionRule), time.Now().Unix(), time.Hour)
+	seatsActionTask := tasks.NewTimingTask("collectSeatsAction", work.CollectInfoFromCurrentSeats(work.CollectSeatsActionRule), time.Now().Unix(), 10*time.Minute)
 	scheduler.RegisterTask(libLinkTask)
 	scheduler.RegisterTask(seatsInfoTask)
 	scheduler.RegisterTask(seatsActionTask)
@@ -74,9 +74,5 @@ func preRun() {
 		log.Fatalln("run in an unknown mode, exit")
 	}
 	dbs.NewMySQL(cfgs.Conf.MySQL.TcpAddress, cfgs.Conf.MySQL.UserName, cfgs.Conf.MySQL.Password, cfgs.Conf.MySQL.DbName)
-	if *cfgs.MODE == "online" {
-		dbs.UseFileLogger(cfgs.Conf.MySQL.LogAddress)
-	} else {
-		dbs.UseLocalMode()
-	}
+	dbs.UseFileLogger(cfgs.Conf.MySQL.LogAddress)
 }

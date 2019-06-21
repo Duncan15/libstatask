@@ -117,6 +117,10 @@ func (scheduler *TimingScheduler) Run() {
 				scheduler.curPos++
 				scheduler.curPos %= 3600
 			case <-scheduler.stopChan:
+				// when closing taskChan, this program shouldn't exit right now,
+				// because it should wait all the task in taskChan to be executed,
+				// after that, all the worker goroutine can exit, and the main goroutine can exit.
+				// this is the cause of stopChan's exist.
 				close(scheduler.taskChan)
 				break PRODUCE_LOOP
 
